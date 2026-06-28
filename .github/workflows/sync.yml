@@ -24,7 +24,6 @@ jobs:
       - name: 安装依赖包
         run: |
           pip install notion-client
-          pip install notion-to-md
           pip install python-frontmatter
 
       - name: 执行同步脚本
