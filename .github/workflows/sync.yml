@@ -29,8 +29,8 @@ jobs:
 
       - name: 执行同步脚本
         env:
-          NOTION_KEY: ${{ secrets.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 }}        # ⚠️ 请先在 GitHub Secrets 中添加
-          NOTION_DB: ${{ secrets.6edd4fac53f383ce83bc81cea8e0f701 }}     # ⚠️ 请先在 GitHub Secrets 中添加
+          NOTION_KEY: ${{ secrets.NOTION_API_KEY }}        # ⚠️ 请先在 GitHub Secrets 中添加
+          NOTION_DB: ${{ secrets.NOTION_DATABASE_ID }}     # ⚠️ 请先在 GitHub Secrets 中添加
         run: python sync.py
 
       - name: 提交并推送更改
