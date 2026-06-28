@@ -9,7 +9,7 @@ import frontmatter
 # ⚠️ 请修改下方配置（和之前一样）
 # =====================================================
 
-DATABASE_ID = os.environ.get("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", "⚠️ 请替换为你的 DATABASE_ID")
+DATABASE_ID = os.environ.get("NOTION_DATABASE_ID", "⚠️ 请替换为你的 DATABASE_ID")
 OUTPUT_DIR = "posts"
 
 PROP_TITLE = "爱玩win11的me"          # ⚠️ 改为你数据库中的“标题”列名
