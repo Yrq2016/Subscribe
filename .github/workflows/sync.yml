@@ -2,16 +2,16 @@ name: Sync Notion to GitHub
 
 on:
   schedule:
-    - cron: "0 0 * * *"      # 每天 UTC 0 点自动运行（北京时间早8点）
-  workflow_dispatch:          # 允许在 GitHub Actions 页面手动点击运行
+    - cron: "0 0 * * *"
+  workflow_dispatch:
 
 permissions:
-  contents: write             # 给机器人写入仓库的权限
+  contents: write
 
 jobs:
   sync:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: 拉取仓库代码
         uses: actions/checkout@v4
@@ -28,8 +28,8 @@ jobs:
 
       - name: 执行同步脚本
         env:
-          NOTION_KEY: ${{ secrets.NOTION_API_KEY }}        # ⚠️ 请先在 GitHub Secrets 中添加
-          NOTION_DB: ${{ secrets.NOTION_DATABASE_ID }}     # ⚠️ 请先在 GitHub Secrets 中添加
+          NOTION_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DB: ${{ secrets.NOTION_DATABASE_ID }}
         run: python sync.py
 
       - name: 提交并推送更改
