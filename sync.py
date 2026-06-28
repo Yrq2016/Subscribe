@@ -3,64 +3,39 @@ import re
 from pathlib import Path
 
 from notion_client import Client
-from notion_to_md import NotionToMD
 import frontmatter
 
 # =====================================================
-# ⚠️ 请修改下方配置
+# ⚠️ 请修改下方配置（和之前一样）
 # =====================================================
 
-# 你的文章数据库 ID（从 Notion 数据库页面 URL 中提取）
-# 例如：https://www.notion.so/username/1234567890abcdef1234567890abcdef?v=...
-# 取中间那串 32 位字符：1234567890abcdef1234567890abcdef
-DATABASE_ID = os.environ.get("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", "⚠️ 请替换为你的 DATABASE_ID")
-
-# 文章存放的目录（如果不存在会自动创建）
+DATABASE_ID = os.environ.get("NOTION_DB", "⚠️ 请替换为你的 DATABASE_ID")
 OUTPUT_DIR = "posts"
 
-# Notion 数据库中的属性名称映射（改为你实际使用的名称）
-PROP_TITLE = "爱玩win11的me"          # ⚠️ 改为你数据库中“标题”列的名字
-PROP_TAGS = ""           # ⚠️ 改为你数据库中“标签”列的名字（没有可忽略）
-PROP_STATUS = "published"         # ⚠️ 改为你数据库中“状态”列的名字（用于过滤草稿）
-PUBLISHED_STATUS = "已发布"   # ⚠️ 只有状态等于这个值的文章才会被导出
+PROP_TITLE = "爱玩win11的me"          # ⚠️ 改为你数据库中的“标题”列名
+PROP_TAGS = ""           # ⚠️ 改为你数据库中的“标签”列名
+PROP_STATUS = "published"         # ⚠️ 改为你数据库中的“状态”列名
+PUBLISHED_STATUS = "已发布"   # ⚠️ 只有状态等于这个值的文章才会导出
 
 # =====================================================
-# 以下代码无需修改
+# 以下为自定义 Markdown 转换函数（无需额外库）
 # =====================================================
 
-# 初始化 Notion 客户端
 NOTION_KEY = os.environ.get("NOTION_KEY")
 if not NOTION_KEY:
-    raise ValueError("❌ 错误：未找到 NOTION_KEY 环境变量，请在 GitHub Secrets 中配置")
+    raise ValueError("❌ 未找到 NOTION_KEY 环境变量")
 
 client = Client(auth=NOTION_KEY)
-
-# 创建输出目录
 Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
-
-# 初始化转换器（将 Notion 块转为 Markdown）
-md_converter = NotionToMD(client)
-
-
-def clean_filename(title: str) -> str:
-    """将文章标题转为安全的文件名"""
-    # 移除非法字符
-    filename = re.sub(r'[<>:"/\\|?*]', '', title)
-    # 限制长度
-    if len(filename) > 50:
-        filename = filename[:50]
-    return filename.strip() or "untitled"
 
 
 def get_page_property(page, prop_name: str):
-    """安全获取页面属性值"""
+    """安全获取属性值（和之前一样）"""
     props = page.get("properties", {})
     if prop_name not in props:
         return None
-    
     prop = props[prop_name]
     prop_type = prop.get("type")
-    
     if prop_type == "title":
         return prop.get("title", [{}])[0].get("plain_text", "") if prop.get("title") else ""
     elif prop_type == "rich_text":
@@ -75,14 +50,75 @@ def get_page_property(page, prop_name: str):
     return None
 
 
+def clean_filename(title: str) -> str:
+    filename = re.sub(r'[<>:"/\\|?*]', '', title)
+    return (filename[:50] or "untitled").strip()
+
+
+def block_to_markdown(block):
+    """将单个 Notion 块转为 Markdown 字符串"""
+    block_type = block.get("type")
+    if not block_type:
+        return ""
+
+    # 通用获取富文本
+    def get_rich_text(prop_name):
+        rich_text = block.get(block_type, {}).get(prop_name, [])
+        return "".join([t.get("plain_text", "") for t in rich_text])
+
+    # 处理各种块类型
+    if block_type == "paragraph":
+        return get_rich_text("rich_text") + "\n\n"
+    elif block_type == "heading_1":
+        return "# " + get_rich_text("rich_text") + "\n\n"
+    elif block_type == "heading_2":
+        return "## " + get_rich_text("rich_text") + "\n\n"
+    elif block_type == "heading_3":
+        return "### " + get_rich_text("rich_text") + "\n\n"
+    elif block_type == "bulleted_list_item":
+        return "- " + get_rich_text("rich_text") + "\n"
+    elif block_type == "numbered_list_item":
+        # 注意：真实编号由顺序决定，这里简单用 "1. "
+        return "1. " + get_rich_text("rich_text") + "\n"
+    elif block_type == "to_do":
+        checked = block.get("to_do", {}).get("checked", False)
+        mark = "[x]" if checked else "[ ]"
+        return "- " + mark + " " + get_rich_text("rich_text") + "\n"
+    elif block_type == "code":
+        code = block.get("code", {})
+        lang = code.get("language", "")
+        text = "".join([t.get("plain_text", "") for t in code.get("rich_text", [])])
+        return f"```{lang}\n{text}\n```\n\n"
+    elif block_type == "quote":
+        return "> " + get_rich_text("rich_text") + "\n\n"
+    elif block_type == "callout":
+        # 简单处理，把 icon 和 text 一起输出
+        icon = block.get("callout", {}).get("icon", {}).get("emoji", "")
+        text = get_rich_text("rich_text")
+        return f"{icon} {text}\n\n"
+    elif block_type == "divider":
+        return "---\n\n"
+    elif block_type == "image":
+        # 只处理外部图片，提取 URL
+        img = block.get("image", {})
+        url = img.get("external", {}).get("url") or img.get("file", {}).get("url")
+        return f"![]({url})\n\n" if url else ""
+    else:
+        # 其他类型（如 bookmark、embed 等）忽略或简单处理
+        return ""
+
+
 def convert_blocks_to_md(page_id: str) -> str:
-    """将 Notion 页面所有块转换为 Markdown 文本"""
+    """递归获取所有子块并转换为 Markdown"""
     try:
-        # 获取页面的所有子块
-        blocks = client.blocks.children.list(block_id=page_id)
-        # 使用 notion-to-md 转换
-        markdown = md_converter.blocks_to_md(blocks.get("results", []))
-        return str(markdown) if markdown else ""
+        blocks = client.blocks.children.list(block_id=page_id).get("results", [])
+        markdown = ""
+        for block in blocks:
+            markdown += block_to_markdown(block)
+            # 如果有子块（如 toggle、synced_block 等），递归
+            if block.get("has_children", False):
+                markdown += convert_blocks_to_md(block["id"])
+        return markdown
     except Exception as e:
         print(f"  ⚠️ 转换块时出错: {e}")
         return ""
@@ -90,82 +126,64 @@ def convert_blocks_to_md(page_id: str) -> str:
 
 def main():
     print("🚀 开始同步 Notion 文章...")
-    
-    # 查询数据库中的所有页面
     try:
-        response = client.databases.query(
-            database_id=DATABASE_ID,
-            # ⚠️ 可选：如果你想按创建时间排序，取消下面的注释
-            # sorts=[{"timestamp": "created_time", "direction": "descending"}]
-        )
+        response = client.databases.query(database_id=DATABASE_ID)
     except Exception as e:
-        print(f"❌ 查询数据库失败，请检查 DATABASE_ID 是否正确: {e}")
+        print(f"❌ 查询数据库失败: {e}")
         return
-    
+
     pages = response.get("results", [])
     print(f"📊 找到 {len(pages)} 个页面")
-    
+
     success_count = 0
     skip_count = 0
-    
+
     for page in pages:
         page_id = page["id"]
-        
-        # 获取标题
         title = get_page_property(page, PROP_TITLE)
         if not title:
             print(f"  ⚠️ 跳过无标题页面: {page_id}")
             skip_count += 1
             continue
-        
-        # 检查状态（如果配置了状态过滤）
+
+        # 状态过滤
         if PROP_STATUS and PUBLISHED_STATUS:
             status = get_page_property(page, PROP_STATUS)
             if status != PUBLISHED_STATUS:
                 print(f"  ⏭️ 跳过 {title}（状态: {status}）")
                 skip_count += 1
                 continue
-        
+
         print(f"  📝 处理: {title}")
-        
-        # 转换内容为 Markdown
         content = convert_blocks_to_md(page_id)
-        
-        # 获取标签
+
         tags = get_page_property(page, PROP_TAGS)
         if tags and isinstance(tags, list):
-            tags = [t for t in tags if t]  # 过滤空标签
+            tags = [t for t in tags if t]
         else:
             tags = []
-        
-        # 构建 frontmatter（文章元数据）
+
         post = frontmatter.Post(
             content,
             title=title,
             date=page.get("created_time", ""),
             updated=page.get("last_edited_time", ""),
             tags=tags,
-            # 可以添加更多属性，例如：
-            # url=page.get("url", ""),
         )
-        
-        # 生成安全的文件名
+
         filename = clean_filename(title)
         filepath = Path(OUTPUT_DIR) / f"{filename}.md"
-        
-        # 防止重名
         counter = 1
         while filepath.exists():
             filepath = Path(OUTPUT_DIR) / f"{filename}_{counter}.md"
             counter += 1
-        
-        # 写入文件
+
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(frontmatter.dumps(post))
-        
+
         success_count += 1
         print(f"  ✅ 已保存: {filepath}")
-    
+
     print(f"\n🎉 同步完成！成功: {success_count} 篇，跳过: {skip_count} 篇")
 
 
