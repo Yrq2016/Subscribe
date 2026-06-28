@@ -6,19 +6,19 @@ from notion_client import Client
 import frontmatter
 
 # =====================================================
-# ⚠️ 请修改下方配置（和之前一样）
+# ⚠️ 请修改下方配置（和你的 Notion 数据库列名一致）
 # =====================================================
 
-DATABASE_ID = os.environ.get("NOTION_DATABASE_ID", "⚠️ 请替换为你的 DATABASE_ID")
+DATABASE_ID = os.environ.get("NOTION_DB", "⚠️ 请替换为你的 DATABASE_ID")
 OUTPUT_DIR = "posts"
 
 PROP_TITLE = "爱玩win11的me"          # ⚠️ 改为你数据库中的“标题”列名
-PROP_TAGS = ""           # ⚠️ 改为你数据库中的“标签”列名
-PROP_STATUS = "published"         # ⚠️ 改为你数据库中的“状态”列名
-PUBLISHED_STATUS = "已发布"   # ⚠️ 只有状态等于这个值的文章才会导出
+PROP_TAGS = ""          # ⚠️ 改为你数据库中的“标签”列名
+PROP_STATUS = "status"         # ⚠️ 改为你数据库中的“状态”列名
+PUBLISHED_STATUS = "published"   # ⚠️ 只有状态等于这个值的文章才会导出
 
 # =====================================================
-# 以下为自定义 Markdown 转换函数（无需额外库）
+# 以下代码无需修改
 # =====================================================
 
 NOTION_KEY = os.environ.get("NOTION_KEY")
@@ -30,7 +30,6 @@ Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
 
 
 def get_page_property(page, prop_name: str):
-    """安全获取属性值（和之前一样）"""
     props = page.get("properties", {})
     if prop_name not in props:
         return None
@@ -56,17 +55,14 @@ def clean_filename(title: str) -> str:
 
 
 def block_to_markdown(block):
-    """将单个 Notion 块转为 Markdown 字符串"""
     block_type = block.get("type")
     if not block_type:
         return ""
 
-    # 通用获取富文本
     def get_rich_text(prop_name):
         rich_text = block.get(block_type, {}).get(prop_name, [])
         return "".join([t.get("plain_text", "") for t in rich_text])
 
-    # 处理各种块类型
     if block_type == "paragraph":
         return get_rich_text("rich_text") + "\n\n"
     elif block_type == "heading_1":
@@ -78,7 +74,6 @@ def block_to_markdown(block):
     elif block_type == "bulleted_list_item":
         return "- " + get_rich_text("rich_text") + "\n"
     elif block_type == "numbered_list_item":
-        # 注意：真实编号由顺序决定，这里简单用 "1. "
         return "1. " + get_rich_text("rich_text") + "\n"
     elif block_type == "to_do":
         checked = block.get("to_do", {}).get("checked", False)
@@ -92,30 +87,25 @@ def block_to_markdown(block):
     elif block_type == "quote":
         return "> " + get_rich_text("rich_text") + "\n\n"
     elif block_type == "callout":
-        # 简单处理，把 icon 和 text 一起输出
         icon = block.get("callout", {}).get("icon", {}).get("emoji", "")
         text = get_rich_text("rich_text")
         return f"{icon} {text}\n\n"
     elif block_type == "divider":
         return "---\n\n"
     elif block_type == "image":
-        # 只处理外部图片，提取 URL
         img = block.get("image", {})
         url = img.get("external", {}).get("url") or img.get("file", {}).get("url")
         return f"![]({url})\n\n" if url else ""
     else:
-        # 其他类型（如 bookmark、embed 等）忽略或简单处理
         return ""
 
 
 def convert_blocks_to_md(page_id: str) -> str:
-    """递归获取所有子块并转换为 Markdown"""
     try:
         blocks = client.blocks.children.list(block_id=page_id).get("results", [])
         markdown = ""
         for block in blocks:
             markdown += block_to_markdown(block)
-            # 如果有子块（如 toggle、synced_block 等），递归
             if block.get("has_children", False):
                 markdown += convert_blocks_to_md(block["id"])
         return markdown
@@ -146,7 +136,6 @@ def main():
             skip_count += 1
             continue
 
-        # 状态过滤
         if PROP_STATUS and PUBLISHED_STATUS:
             status = get_page_property(page, PROP_STATUS)
             if status != PUBLISHED_STATUS:
